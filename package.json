@@ -1,14 +1,13 @@
 {
   "name": "jira-proxy",
   "version": "1.0.0",
-  "description": "Proxy server for Jira integration",
-  "main": "server.js",
+  "main": "api/server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node api/server.js"
   },
   "dependencies": {
-    "express": "^4.19.2",
+    "express": "^4.18.2",
     "cors": "^2.8.5",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^2.6.1"
   }
 }
