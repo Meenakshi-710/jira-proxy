@@ -9,14 +9,16 @@ const PORT = process.env.PORT || 3001;
 app.use(
   cors({
     origin: [
-      "http://localhost:5173",
-      "http://localhost:3001",
-      "https://claude.ai",
+      "http://localhost:5173",     // Vite dev
+      "http://localhost:3001",     // Local server
+      "https://claude.ai",         // Any other web app
+      "chrome-extension://didiikhicfjlggddnigelfbopcladhgn", // Your Chrome extension
     ],
     credentials: true,
   })
 );
 app.use(express.json());
+
 
 // Utility: mask tokens in logs
 const mask = (s = "") => {
@@ -163,22 +165,23 @@ app.post("/jira/get-tasks", async (req, res) => {
         "Content-Type": "application/json",
         "User-Agent": "JIRA-Proxy-Server/1.0",
       },
-      body: JSON.stringify({
-        jql,
-        maxResults: 100,
-        fields: [
-          "summary",
-          "status",
-          "assignee",
-          "priority",
-          "project",
-          "issuetype",
-          "timetracking",
-          "created",
-          "updated",
-          "description",
-        ],
-      }),
+              body: JSON.stringify({
+          jql,
+          maxResults: 100,
+          fields: [
+            "summary",
+            "status",
+            "assignee",
+            "priority",
+            "project",
+            "issuetype",
+            "timetracking",
+            "created",
+            "updated",
+            "description",
+            "worklog",
+          ],
+        }),
     });
 
     if (!response.ok) {
@@ -259,6 +262,191 @@ app.post("/jira/get-projects", async (req, res) => {
     return res
       .status(500)
       .json({ error: String(err), message: "Failed to fetch JIRA projects" });
+  }
+});
+
+// Add worklog to Jira issue (POST)
+app.post("/jira/add-worklog", async (req, res) => {
+  try {
+    const { serverUrl, username, apiToken, issueKey, timeSpent, comment } = req.body;
+
+    if (!serverUrl || !username || !apiToken) {
+      return res
+        .status(400)
+        .json({
+          error: "Missing credentials",
+          message: "Provide serverUrl, username and apiToken",
+        });
+    }
+
+    if (!issueKey || !timeSpent) {
+      return res
+        .status(400)
+        .json({
+          error: "Missing required fields",
+          message: "Provide issueKey and timeSpent",
+        });
+    }
+
+    // Validate timeSpent format (should match Jira's expected format: Xd Xh Xm)
+    const timeSpentRegex = /^(\d+[wdhm])?\s*(\d+[wdhm])?\s*(\d+[wdhm])?\s*(\d+[wdhm])?$/;
+    if (!timeSpentRegex.test(timeSpent.trim())) {
+      return res
+        .status(400)
+        .json({
+          error: "Invalid time format",
+          message: "Time format should be like: 2h 30m, 1d, 45m (w=week, d=day, h=hour, m=minute)",
+        });
+    }
+
+    const jiraUrl = `${serverUrl}/rest/api/3/issue/${issueKey}/worklog`;
+    console.log("⏰ Adding worklog:", jiraUrl);
+    console.log("🔑 Issue Key:", issueKey);
+    console.log("⏱️ Time Spent:", timeSpent);
+    console.log("💬 Comment:", comment || "No comment");
+    console.log("📧 Username:", username);
+    console.log("🔑 Token:", mask(apiToken));
+
+    const authHeader = `Basic ${Buffer.from(`${username}:${apiToken}`).toString(
+      "base64"
+    )}`;
+
+    // Build the worklog payload according to Jira's API requirements
+    const worklogPayload = {
+      timeSpent: timeSpent
+    };
+
+    // Add comment if provided, using Jira's required Atlassian Document Format
+    if (comment && comment.trim()) {
+      worklogPayload.comment = {
+        type: "doc",
+        version: 1,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: comment.trim()
+              }
+            ]
+          }
+        ]
+      };
+    }
+
+    console.log("📦 Worklog Payload:", JSON.stringify(worklogPayload, null, 2));
+
+    const response = await fetch(jiraUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "JIRA-Proxy-Server/1.0",
+      },
+      body: JSON.stringify(worklogPayload),
+    });
+
+          if (!response.ok) {
+        const text = await response.text();
+        console.error("❌ Add worklog error:", response.status, text);
+        
+        // Try to parse the error response as JSON for better error handling
+        let errorData;
+        try {
+          errorData = JSON.parse(text);
+        } catch (e) {
+          errorData = { error: text };
+        }
+        
+        return res
+          .status(response.status)
+          .json({ 
+            error: errorData.error || errorData.errorMessages || text, 
+            status: response.status,
+            details: errorData
+          });
+      }
+
+    const data = await response.json();
+    console.log("✅ Worklog added successfully:", data);
+    return res.json({
+      status: "ok",
+      message: "Worklog added successfully",
+      worklog: data,
+    });
+  } catch (err) {
+    console.error("❌ add-worklog exception:", err);
+    return res
+      .status(500)
+      .json({ error: String(err), message: "Failed to add worklog to JIRA" });
+  }
+});
+
+// Get worklogs for Jira issue (POST)
+app.post("/jira/get-worklogs", async (req, res) => {
+  try {
+    const { serverUrl, username, apiToken, issueKey } = req.body;
+
+    if (!serverUrl || !username || !apiToken) {
+      return res
+        .status(400)
+        .json({
+          error: "Missing credentials",
+          message: "Provide serverUrl, username and apiToken",
+        });
+    }
+
+    if (!issueKey) {
+      return res
+        .status(400)
+        .json({
+          error: "Missing required fields",
+          message: "Provide issueKey",
+        });
+    }
+
+    const jiraUrl = `${serverUrl}/rest/api/3/issue/${issueKey}/worklog`;
+    console.log("📋 Getting worklogs:", jiraUrl);
+    console.log("🔑 Issue Key:", issueKey);
+    console.log("📧 Username:", username);
+    console.log("🔑 Token:", mask(apiToken));
+
+    const authHeader = `Basic ${Buffer.from(`${username}:${apiToken}`).toString(
+      "base64"
+    )}`;
+
+    const response = await fetch(jiraUrl, {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "User-Agent": "JIRA-Proxy-Server/1.0",
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("❌ Get worklogs error:", response.status, text);
+      return res
+        .status(response.status)
+        .json({ error: text, status: response.status });
+    }
+
+    const data = await response.json();
+    console.log("✅ Worklogs retrieved successfully:", data);
+    return res.json({
+      status: "ok",
+      message: "Worklogs retrieved successfully",
+      worklogs: data.worklogs || [],
+      total: data.total || 0,
+    });
+  } catch (err) {
+    console.error("❌ get-worklogs exception:", err);
+    return res
+      .status(500)
+      .json({ error: String(err), message: "Failed to get worklogs from JIRA" });
   }
 });
 
