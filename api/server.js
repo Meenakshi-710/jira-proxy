@@ -12,7 +12,8 @@ app.use(
       "http://localhost:5173",     // Vite dev
       "http://localhost:3001",     // Local server
       "https://claude.ai",         // Any other web app
-      "chrome-extension://didiikhicfjlggddnigelfbopcladhgn", // Your Chrome extension
+      "chrome-extension://didiikhicfjlggddnigelfbopcladhgn",
+      "chrome-extension://inaemmingkjlakjfggfifmifihicpcei"
     ],
     credentials: true,
   })
