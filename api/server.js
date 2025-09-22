@@ -221,7 +221,7 @@ app.post("/jira/get-projects", async (req, res) => {
         });
     }
 
-    const jiraUrl = `${serverUrl}/rest/api/3/project/search`;
+    const jiraUrl = `${serverUrl}/rest/api/3/project/search?maxResults=100&expand=description,lead,url,projectKeys`;
     console.log("📂 Fetching projects:", jiraUrl);
     console.log("📧 Username:", username);
     console.log("🔑 Token:", mask(apiToken));
@@ -242,12 +242,15 @@ app.post("/jira/get-projects", async (req, res) => {
     if (!response.ok) {
       const text = await response.text();
       console.error("❌ Projects fetch error:", response.status, text);
+      console.error("❌ Response headers:", Object.fromEntries(response.headers.entries()));
       return res
         .status(response.status)
         .json({ error: text, status: response.status });
     }
 
     const data = await response.json();
+    console.log("📊 Raw JIRA projects response:", JSON.stringify(data, null, 2));
+    
     const projects = (data.values || []).map((p) => ({
       id: p.id,
       key: p.key,
@@ -256,6 +259,7 @@ app.post("/jira/get-projects", async (req, res) => {
       simplified: p.simplified,
     }));
 
+    console.log(`✅ Processed ${projects.length} JIRA projects`);
     return res.json({ projects });
   } catch (err) {
     console.error("❌ get-projects exception:", err);
