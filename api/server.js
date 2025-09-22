@@ -12,8 +12,7 @@ app.use(
       "http://localhost:5173",     // Vite dev
       "http://localhost:3001",     // Local server
       "https://claude.ai",         // Any other web app
-      "chrome-extension://didiikhicfjlggddnigelfbopcladhgn",
-      "chrome-extension://inaemmingkjlakjfggfifmifihicpcei"
+      "chrome-extension://didiikhicfjlggddnigelfbopcladhgn", // Your Chrome extension
     ],
     credentials: true,
   })
@@ -148,7 +147,7 @@ app.post("/jira/get-tasks", async (req, res) => {
         });
     }
 
-    const jiraUrl = `${serverUrl}/rest/api/3/search`;
+    const jiraUrl = `${serverUrl}/rest/api/3/search/jql`;
     console.log("🔍 JQL:", jql);
     console.log("🌐 Searching:", jiraUrl);
     console.log("📧 Username:", username);
@@ -166,23 +165,23 @@ app.post("/jira/get-tasks", async (req, res) => {
         "Content-Type": "application/json",
         "User-Agent": "JIRA-Proxy-Server/1.0",
       },
-              body: JSON.stringify({
-          jql,
-          maxResults: 100,
-          fields: [
-            "summary",
-            "status",
-            "assignee",
-            "priority",
-            "project",
-            "issuetype",
-            "timetracking",
-            "created",
-            "updated",
-            "description",
-            "worklog",
-          ],
-        }),
+      body: JSON.stringify({
+        jql,
+        maxResults: 100,
+        fields: [
+          "summary",
+          "status",
+          "assignee",
+          "priority",
+          "project",
+          "issuetype",
+          "timetracking",
+          "created",
+          "updated",
+          "description",
+          "worklog",
+        ],
+      }),
     });
 
     if (!response.ok) {
@@ -198,7 +197,7 @@ app.post("/jira/get-tasks", async (req, res) => {
       issues: data.issues,
       total: data.total,
       maxResults: data.maxResults,
-      startAt: data.startAt,
+      nextPageToken: data.nextPageToken,
     });
   } catch (err) {
     console.error("❌ get-tasks exception:", err);
