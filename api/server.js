@@ -164,55 +164,50 @@ app.post("/jira/test-connection", async (req, res) => {
 // Get tasks for HR users (POST) - uses HR credentials automatically
 app.post("/jira/hr/get-tasks", async (req, res) => {
   try {
-    const { serverUrl, username, apiToken } = extractCredentialsWithHRFallback(req, true);
-    const jql =
-      req.body?.jql ||
-      "assignee = currentUser() AND status != Done ORDER BY updated DESC";
+    // Get HR credentials from environment variables
+    const hrCredentials = getHRCredentials();
+    const { serverUrl, username, apiToken } = hrCredentials;
+    
+    const jql = req.body?.jql || "assignee = currentUser() AND status != Done ORDER BY updated DESC";
 
     if (!serverUrl || !username || !apiToken) {
+      console.error("❌ HR credentials missing:", { serverUrl: !!serverUrl, username: !!username, apiToken: !!apiToken });
       return res
         .status(400)
         .json({
-          error: "Missing credentials",
+          error: "Missing HR credentials",
           message: "HR JIRA credentials not configured. Please set HR_JIRA_SERVER_URL, HR_JIRA_USERNAME, and HR_JIRA_API_TOKEN in environment variables.",
         });
     }
 
-    const jiraUrl = `${serverUrl}/rest/api/3/search`;
+    const jiraUrl = `${serverUrl}/rest/api/3/search/jql`;
     console.log("🔍 HR JQL:", jql);
     console.log("🌐 HR Searching:", jiraUrl);
     console.log("📧 HR Username:", username);
     console.log("🔑 HR Token:", mask(apiToken));
+    console.log("📋 Request body:", JSON.stringify(req.body, null, 2));
 
     const authHeader = `Basic ${Buffer.from(`${username}:${apiToken}`).toString(
       "base64"
     )}`;
 
-    const response = await fetch(jiraUrl, {
-      method: "POST",
+    // Build query parameters for the new JQL endpoint
+    const queryParams = new URLSearchParams({
+      jql: jql,
+      maxResults: '100',
+      fields: 'summary,status,assignee,priority,project,issuetype,timetracking,created,updated,description,worklog'
+    });
+    
+    const jiraUrlWithParams = `${jiraUrl}?${queryParams.toString()}`;
+    console.log("🌐 Final HR JIRA URL:", jiraUrlWithParams);
+
+    const response = await fetch(jiraUrlWithParams, {
+      method: "GET",
       headers: {
         Authorization: authHeader,
         Accept: "application/json",
-        "Content-Type": "application/json",
         "User-Agent": "JIRA-Proxy-Server/1.0",
       },
-      body: JSON.stringify({
-        jql,
-        maxResults: 100,
-        fields: [
-          "summary",
-          "status",
-          "assignee",
-          "priority",
-          "project",
-          "issuetype",
-          "timetracking",
-          "created",
-          "updated",
-          "description",
-          "worklog",
-        ],
-      }),
     });
 
     if (!response.ok) {
@@ -265,31 +260,23 @@ app.post("/jira/get-tasks", async (req, res) => {
       "base64"
     )}`;
 
-    const response = await fetch(jiraUrl, {
-      method: "POST",
+    // Build query parameters for the new JQL endpoint
+    const queryParams = new URLSearchParams({
+      jql: jql,
+      maxResults: '100',
+      fields: 'summary,status,assignee,priority,project,issuetype,timetracking,created,updated,description,worklog'
+    });
+    
+    const jiraUrlWithParams = `${jiraUrl}?${queryParams.toString()}`;
+    console.log("🌐 Final JIRA URL:", jiraUrlWithParams);
+
+    const response = await fetch(jiraUrlWithParams, {
+      method: "GET",
       headers: {
         Authorization: authHeader,
         Accept: "application/json",
-        "Content-Type": "application/json",
         "User-Agent": "JIRA-Proxy-Server/1.0",
       },
-      body: JSON.stringify({
-        jql,
-        maxResults: 100,
-        fields: [
-          "summary",
-          "status",
-          "assignee",
-          "priority",
-          "project",
-          "issuetype",
-          "timetracking",
-          "created",
-          "updated",
-          "description",
-          "worklog",
-        ],
-      }),
     });
 
     if (!response.ok) {
