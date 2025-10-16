@@ -180,7 +180,7 @@ app.post("/jira/hr/get-tasks", async (req, res) => {
         });
     }
 
-    const jiraUrl = `${serverUrl}/rest/api/3/search/jql`;
+    const jiraUrl = `${serverUrl}/rest/api/3/search`;
     console.log("🔍 HR JQL:", jql);
     console.log("🌐 HR Searching:", jiraUrl);
     console.log("📧 HR Username:", username);
@@ -191,23 +191,25 @@ app.post("/jira/hr/get-tasks", async (req, res) => {
       "base64"
     )}`;
 
-    // Build query parameters for the new JQL endpoint
-    const queryParams = new URLSearchParams({
+    // Use POST method with JQL in request body (recommended approach for Jira API v3)
+    const searchPayload = {
       jql: jql,
-      maxResults: '100',
-      fields: 'summary,status,assignee,priority,project,issuetype,timetracking,created,updated,description,worklog'
-    });
+      maxResults: 100,
+      fields: ['summary', 'status', 'assignee', 'priority', 'project', 'issuetype', 'timetracking', 'created', 'updated', 'description', 'worklog']
+    };
     
-    const jiraUrlWithParams = `${jiraUrl}?${queryParams.toString()}`;
-    console.log("🌐 Final HR JIRA URL:", jiraUrlWithParams);
+    console.log("🌐 Final HR JIRA URL:", jiraUrl);
+    console.log("📦 Search payload:", JSON.stringify(searchPayload, null, 2));
 
-    const response = await fetch(jiraUrlWithParams, {
-      method: "GET",
+    const response = await fetch(jiraUrl, {
+      method: "POST",
       headers: {
         Authorization: authHeader,
         Accept: "application/json",
+        "Content-Type": "application/json",
         "User-Agent": "JIRA-Proxy-Server/1.0",
       },
+      body: JSON.stringify(searchPayload),
     });
 
     if (!response.ok) {
@@ -250,7 +252,7 @@ app.post("/jira/get-tasks", async (req, res) => {
         });
     }
 
-    const jiraUrl = `${serverUrl}/rest/api/3/search/jql`;
+    const jiraUrl = `${serverUrl}/rest/api/3/search`;
     console.log("🔍 JQL:", jql);
     console.log("🌐 Searching:", jiraUrl);
     console.log("📧 Username:", username);
@@ -260,23 +262,25 @@ app.post("/jira/get-tasks", async (req, res) => {
       "base64"
     )}`;
 
-    // Build query parameters for the new JQL endpoint
-    const queryParams = new URLSearchParams({
+    // Use POST method with JQL in request body (recommended approach for Jira API v3)
+    const searchPayload = {
       jql: jql,
-      maxResults: '100',
-      fields: 'summary,status,assignee,priority,project,issuetype,timetracking,created,updated,description,worklog'
-    });
+      maxResults: 100,
+      fields: ['summary', 'status', 'assignee', 'priority', 'project', 'issuetype', 'timetracking', 'created', 'updated', 'description', 'worklog']
+    };
     
-    const jiraUrlWithParams = `${jiraUrl}?${queryParams.toString()}`;
-    console.log("🌐 Final JIRA URL:", jiraUrlWithParams);
+    console.log("🌐 Final JIRA URL:", jiraUrl);
+    console.log("📦 Search payload:", JSON.stringify(searchPayload, null, 2));
 
-    const response = await fetch(jiraUrlWithParams, {
-      method: "GET",
+    const response = await fetch(jiraUrl, {
+      method: "POST",
       headers: {
         Authorization: authHeader,
         Accept: "application/json",
+        "Content-Type": "application/json",
         "User-Agent": "JIRA-Proxy-Server/1.0",
       },
+      body: JSON.stringify(searchPayload),
     });
 
     if (!response.ok) {
@@ -552,7 +556,8 @@ app.post("/jira/get-worklogs", async (req, res) => {
 // Generic proxy for arbitrary Jira endpoints.
 // Client must send serverUrl, username, apiToken in body/headers/query.
 // Example: POST http://localhost:3001/jira/rest/api/3/issue  with body { serverUrl, username, apiToken, ... }
-app.all(/^\/jira\/.*/, async (req, res) => {
+// Note: This should be placed after all specific routes to avoid conflicts
+app.all(/^\/jira\/rest\/api\/.*/, async (req, res) => {
   try {
     const { serverUrl, username, apiToken } = extractCredentials(req);
 
