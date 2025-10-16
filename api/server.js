@@ -2,6 +2,10 @@
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -40,6 +44,15 @@ function normalizeServerUrl(raw) {
   return url.replace(/\/+$/, "");
 }
 
+// Get HR JIRA credentials from environment variables
+function getHRCredentials() {
+  return {
+    serverUrl: process.env.HR_JIRA_SERVER_URL,
+    username: process.env.HR_JIRA_USERNAME,
+    apiToken: process.env.HR_JIRA_API_TOKEN
+  };
+}
+
 // Extract credentials (body > headers > query). NO env fallback.
 function extractCredentials(req) {
   const serverRaw =
@@ -51,6 +64,23 @@ function extractCredentials(req) {
 
   const serverUrl = normalizeServerUrl(serverRaw);
   return { serverUrl, username, apiToken };
+}
+
+// Extract credentials with HR fallback for HR users
+function extractCredentialsWithHRFallback(req, isHRUser = false) {
+  const extracted = extractCredentials(req);
+  
+  // If HR user and no credentials provided, use HR credentials
+  if (isHRUser && (!extracted.serverUrl || !extracted.username || !extracted.apiToken)) {
+    const hrCredentials = getHRCredentials();
+    return {
+      serverUrl: extracted.serverUrl || hrCredentials.serverUrl,
+      username: extracted.username || hrCredentials.username,
+      apiToken: extracted.apiToken || hrCredentials.apiToken
+    };
+  }
+  
+  return extracted;
 }
 
 // Simple request logger
@@ -128,6 +158,83 @@ app.post("/jira/test-connection", async (req, res) => {
     return res
       .status(500)
       .json({ error: String(err), message: "Failed to connect to JIRA" });
+  }
+});
+
+// Get tasks for HR users (POST) - uses HR credentials automatically
+app.post("/jira/hr/get-tasks", async (req, res) => {
+  try {
+    const { serverUrl, username, apiToken } = extractCredentialsWithHRFallback(req, true);
+    const jql =
+      req.body?.jql ||
+      "assignee = currentUser() AND status != Done ORDER BY updated DESC";
+
+    if (!serverUrl || !username || !apiToken) {
+      return res
+        .status(400)
+        .json({
+          error: "Missing credentials",
+          message: "HR JIRA credentials not configured. Please set HR_JIRA_SERVER_URL, HR_JIRA_USERNAME, and HR_JIRA_API_TOKEN in environment variables.",
+        });
+    }
+
+    const jiraUrl = `${serverUrl}/rest/api/3/search`;
+    console.log("🔍 HR JQL:", jql);
+    console.log("🌐 HR Searching:", jiraUrl);
+    console.log("📧 HR Username:", username);
+    console.log("🔑 HR Token:", mask(apiToken));
+
+    const authHeader = `Basic ${Buffer.from(`${username}:${apiToken}`).toString(
+      "base64"
+    )}`;
+
+    const response = await fetch(jiraUrl, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": "JIRA-Proxy-Server/1.0",
+      },
+      body: JSON.stringify({
+        jql,
+        maxResults: 100,
+        fields: [
+          "summary",
+          "status",
+          "assignee",
+          "priority",
+          "project",
+          "issuetype",
+          "timetracking",
+          "created",
+          "updated",
+          "description",
+          "worklog",
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("❌ HR JIRA search error:", response.status, text);
+      return res
+        .status(response.status)
+        .json({ error: text, status: response.status });
+    }
+
+    const data = await response.json();
+    return res.json({
+      issues: data.issues,
+      total: data.total,
+      maxResults: data.maxResults,
+      startAt: data.startAt,
+    });
+  } catch (err) {
+    console.error("❌ hr/get-tasks exception:", err);
+    return res
+      .status(500)
+      .json({ error: String(err), message: "Failed to fetch JIRA tasks for HR" });
   }
 });
 
