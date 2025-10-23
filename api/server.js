@@ -302,6 +302,71 @@ app.post("/jira/get-tasks", async (req, res) => {
   }
 });
 
+// Get projects for HR users (POST) - uses HR credentials automatically
+app.post("/jira/hr/get-projects", async (req, res) => {
+  try {
+    // Get HR credentials from environment variables
+    const hrCredentials = getHRCredentials();
+    const { serverUrl, username, apiToken } = hrCredentials;
+
+    if (!serverUrl || !username || !apiToken) {
+      console.error("❌ HR credentials missing:", { serverUrl: !!serverUrl, username: !!username, apiToken: !!apiToken });
+      return res
+        .status(400)
+        .json({
+          error: "Missing HR credentials",
+          message: "HR JIRA credentials not configured. Please set HR_JIRA_SERVER_URL, HR_JIRA_USERNAME, and HR_JIRA_API_TOKEN in environment variables.",
+        });
+    }
+
+    const jiraUrl = `${serverUrl}/rest/api/3/project/search?maxResults=100&expand=description,lead,url,projectKeys`;
+    console.log("📂 HR Fetching projects:", jiraUrl);
+    console.log("📧 HR Username:", username);
+    console.log("🔑 HR Token:", mask(apiToken));
+
+    const authHeader = `Basic ${Buffer.from(`${username}:${apiToken}`).toString(
+      "base64"
+    )}`;
+
+    const response = await fetch(jiraUrl, {
+      method: "GET",
+      headers: {
+        Authorization: authHeader,
+        Accept: "application/json",
+        "User-Agent": "JIRA-Proxy-Server/1.0",
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error("❌ HR Projects fetch error:", response.status, text);
+      console.error("❌ Response headers:", Object.fromEntries(response.headers.entries()));
+      return res
+        .status(response.status)
+        .json({ error: text, status: response.status });
+    }
+
+    const data = await response.json();
+    console.log("📊 Raw HR JIRA projects response:", JSON.stringify(data, null, 2));
+    
+    const projects = (data.values || []).map((p) => ({
+      id: p.id,
+      key: p.key,
+      name: p.name,
+      projectTypeKey: p.projectTypeKey,
+      simplified: p.simplified,
+    }));
+
+    console.log(`✅ Processed ${projects.length} HR JIRA projects`);
+    return res.json({ projects });
+  } catch (err) {
+    console.error("❌ hr/get-projects exception:", err);
+    return res
+      .status(500)
+      .json({ error: String(err), message: "Failed to fetch JIRA projects for HR" });
+  }
+});
+
 // Get projects (POST)
 app.post("/jira/get-projects", async (req, res) => {
   try {
